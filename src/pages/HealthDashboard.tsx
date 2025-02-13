@@ -5,7 +5,7 @@ import { FileCheck, Upload } from "lucide-react";
 export function HealthDashboard() {
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [showLifestyle, setShowLifestyle] = useState(false);
+  const [activeTab, setActiveTab] = useState("upload");
   const [extractedText, setExtractedText] = useState<string>("");
   const [matchedKeyword, setMatchedKeyword] = useState<string>("");
   const [lifestyle, setLifestyle] = useState({
@@ -14,10 +14,17 @@ export function HealthDashboard() {
     bmi: "Normal",
     jobHazard: "Low",
   });
+  const [manualEntry, setManualEntry] = useState({
+    testName: "",
+    testDate: "",
+    resultValue: "",
+    referenceRange: "",
+    doctorNotes: "",
+  });
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setError(null); // Reset error state
+      setError(null);
       const uploadedFiles = Array.from(e.target.files);
       setFiles(uploadedFiles);
 
@@ -53,30 +60,28 @@ export function HealthDashboard() {
 
       {/* Tabs */}
       <div className="flex justify-center gap-4 mb-6">
-        <button
-          className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
-            showLifestyle
-              ? "bg-gray-200 text-gray-900"
-              : "bg-purple-600 text-white hover:bg-purple-700"
-          }`}
-          onClick={() => setShowLifestyle(false)}
-        >
-          Upload Docs
-        </button>
-        <button
-          className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
-            showLifestyle
-              ? "bg-purple-600 text-white hover:bg-purple-700"
-              : "bg-gray-200 text-gray-900"
-          }`}
-          onClick={() => setShowLifestyle(true)}
-        >
-          Lifestyle
-        </button>
+        {[
+          { label: "Upload Docs", value: "upload" },
+          { label: "Lab-Report", value: "reupload" },
+          { label: "Manual Entry", value: "manual" },
+          { label: "Lifestyle", value: "lifestyle" },
+        ].map((tab) => (
+          <button
+            key={tab.value}
+            className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
+              activeTab === tab.value
+                ? "bg-purple-600 text-white"
+                : "bg-gray-200 text-gray-900"
+            }`}
+            onClick={() => setActiveTab(tab.value)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Upload Section */}
-      {!showLifestyle && (
+      {(activeTab === "upload" || activeTab === "reupload") && (
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
             <Upload className="w-12 h-12 mx-auto text-purple-600 mb-4" />
@@ -96,38 +101,38 @@ export function HealthDashboard() {
               />
             </label>
           </div>
+        </div>
+      )}
 
-          {/* Uploaded File Display */}
-          {files.length > 0 && (
-            <div className="mt-6">
-              <h4 className="text-lg font-semibold text-gray-800 mb-3">
-                Uploaded File
-              </h4>
-              <div className="flex items-center bg-purple-50 p-3 rounded-lg">
-                <FileCheck className="w-5 h-5 text-purple-600 mr-2" />
-                <span className="text-gray-700">{files[0].name}</span>
+      {/* Manual Entry Section */}
+      {activeTab === "manual" && (
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+            Enter Health Data Manually
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Object.entries(manualEntry).map(([key, value]) => (
+              <div key={key} className="text-left">
+                <label className="block text-gray-800 font-semibold mb-1 capitalize">
+                  {key.replace(/([A-Z])/g, " $1")}
+                </label>
+                <input
+                  type="text"
+                  className="w-full p-2 border rounded-lg"
+                  value={value}
+                  onChange={(e) =>
+                    setManualEntry({ ...manualEntry, [key]: e.target.value })
+                  }
+                  placeholder={`Enter ${key.replace(/([A-Z])/g, " $1")}`}
+                />
               </div>
-            </div>
-          )}
-
-          {/* Extracted Text Display */}
-          {extractedText && (
-            <div className="mt-6 p-4 bg-gray-100 rounded-lg">
-              <h4 className="text-lg font-semibold text-gray-800">
-                Extracted Text
-              </h4>
-              <p className="text-gray-700">{extractedText}</p>
-              <h4 className="text-lg font-semibold text-gray-800 mt-4">
-                Matched Keyword
-              </h4>
-              <p className="text-gray-700">{matchedKeyword}</p>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       )}
 
       {/* Lifestyle Section */}
-      {showLifestyle && (
+      {activeTab === "lifestyle" && (
         <div className="bg-white rounded-xl shadow-lg p-8 text-center">
           <h2 className="text-2xl font-semibold text-gray-800">
             Lifestyle Recommendations
