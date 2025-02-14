@@ -7,6 +7,9 @@ import {
 import Navbar from "./components/Navbar";
 import LandingPage from "./pages/LandingPage";
 import Auth from "./pages/Auth";
+import AdminAuth from "./pages/Admin_auth";
+import AdminDashboard from "./pages/admin-dashboard";
+
 import { HealthDashboard } from "./pages/HealthDashboard";
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -22,6 +25,8 @@ export default function App() {
         <Routes>
           <Route path="/home" element={<LandingPage />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/Admin_auth" element={<AdminAuth />} />
+          <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route
             path="/dashboard"
             element={
