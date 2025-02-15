@@ -1,13 +1,16 @@
 import React, { useState } from "react";
 import axios from "axios";
-import { FileCheck, Upload } from "lucide-react";
+import { FileCheck, Upload, ClipboardList, Dumbbell } from "lucide-react";
 
 export function HealthDashboard() {
   const [files, setFiles] = useState<File[]>([]);
+  const [showLifestyle] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("upload");
+  const [activeTab, setActiveTab] = useState<string>("upload");
   const [extractedText, setExtractedText] = useState<string>("");
   const [matchedKeyword, setMatchedKeyword] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [responseMessage, setResponseMessage] = useState<string>("");
 
   const frequencyOptions = [
     { value: 0, label: "Never" },
@@ -28,16 +31,20 @@ export function HealthDashboard() {
   });
 
   const [manualEntry, setManualEntry] = useState({
-    testName: "",
-    testDate: "",
-    resultValue: "",
-    referenceRange: "",
-    doctorNotes: "",
+    bloodGlucose: "",
+    HBA1C: "",
+    systolicBp: "",
+    DiastolicBP: "",
+    LDL: "",
+    HDL: "",
+    Triglycerides: "",
+    Haemoglobin: "",
+    MuscularCorpusValue: "",
   });
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setError(null);
+    if (e.target.files) {
+      setError(null); // Reset error state
       const uploadedFiles = Array.from(e.target.files);
       setFiles(uploadedFiles);
 
@@ -46,21 +53,15 @@ export function HealthDashboard() {
 
       try {
         const response = await axios.post(
-          "http://localhost:8000/upload/",
+          "http://localhost:8001/upload/",
           formData,
           {
             headers: { "Content-Type": "multipart/form-data" },
           },
         );
-
-        if (response.data.extracted_text) {
-          setExtractedText(response.data.extracted_text);
-        }
-        if (response.data.matched_keyword) {
-          setMatchedKeyword(response.data.matched_keyword);
-        }
+        setExtractedText(response.data.extracted_text);
+        setMatchedKeyword(response.data.matched_keyword);
       } catch (err: any) {
-        console.error("Upload error:", err);
         setError(err.response?.data?.detail || "Failed to process file");
       }
     }
@@ -69,53 +70,74 @@ export function HealthDashboard() {
   const handleReupload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setError(null);
-      const uploadedFiles = Array.from(e.target.files);
+      const file = e.target.files[0];
 
-      // Validate file type
-      const file = uploadedFiles[0];
-      const fileType = file.type;
       if (
         ![
           "application/pdf",
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ].includes(fileType)
+        ].includes(file.type)
       ) {
-        setError("Please upload only PDF or DOCX files");
+        setError(() => "Please upload only PDF or DOCX files");
         return;
       }
 
-      setFiles(uploadedFiles);
-
+      setFiles([file]);
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", file as Blob);
 
       try {
         const response = await axios.post(
-          "http://localhost:8000/reupload/", // Different endpoint for re-upload
+          "http://localhost:8001/reupload/",
           formData,
           {
             headers: {
               "Content-Type": "multipart/form-data",
-              "X-Upload-Type": "reupload", // Custom header to identify re-upload
+              "X-Upload-Type": "reupload",
             },
           },
         );
 
-        if (response.data.extracted_text) {
-          setExtractedText(response.data.extracted_text);
+        setExtractedText(response.data.extracted_text || "");
+        setMatchedKeyword(response.data.matched_keyword || "");
+      } catch (err) {
+        if (axios.isAxiosError(err) && err.response?.data?.detail) {
+          setError(err.response.data.detail);
+        } else {
+          setError("Failed to process re-uploaded file");
         }
-        if (response.data.matched_keyword) {
-          setMatchedKeyword(response.data.matched_keyword);
-        }
-      } catch (err: any) {
-        console.error("Re-upload error:", err);
-        setError(
-          err.response?.data?.detail || "Failed to process re-uploaded file",
-        );
       }
     }
   };
 
+  const handleChange = (key: string, value: string) => {
+    setManualEntry((prev) => ({
+      ...prev,
+      [key]: value === "" ? "" : parseFloat(value) || "",
+    }));
+  };
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    setResponseMessage("");
+    try {
+      const requestData = Object.fromEntries(
+        Object.entries(manualEntry).map(([key, value]) => [
+          key,
+          parseFloat(value as string) || 0,
+        ]),
+      );
+      const response = await axios.post(
+        "http://localhost:8000/predict",
+        requestData,
+      );
+      setResponseMessage(`Prediction: ${response.data.prediction}`);
+    } catch (error) {
+      setResponseMessage("Error submitting data. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="text-center mb-12">
@@ -130,26 +152,27 @@ export function HealthDashboard() {
       {/* Tabs */}
       <div className="flex justify-center gap-4 mb-6">
         {[
-          { label: "Upload Docs", value: "upload" },
-          { label: "Lab-Reports", value: "reupload" },
-          { label: "Manual Entry", value: "manual" },
-          { label: "Lifestyle", value: "lifestyle" },
+          { label: "Upload Docs", value: "upload", icon: Upload },
+          { label: "Lab-Reports", value: "reupload", icon: FileCheck },
+          { label: "Manual Entry", value: "manual", icon: ClipboardList },
+          { label: "Lifestyle", value: "lifestyle", icon: Dumbbell },
         ].map((tab) => (
           <button
             key={tab.value}
-            className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition-colors ${
               activeTab === tab.value
                 ? "bg-purple-600 text-white"
                 : "bg-gray-200 text-gray-900"
             }`}
             onClick={() => setActiveTab(tab.value)}
           >
+            <tab.icon className="w-5 h-5" />
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Upload Section */}
+      {/* Conditional Rendering Based on Active Tab */}
       {activeTab === "upload" && (
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
@@ -170,16 +193,42 @@ export function HealthDashboard() {
               />
             </label>
           </div>
+
+          {/* Uploaded File Display */}
+          {files.length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-lg font-semibold text-gray-800 mb-3">
+                Uploaded File
+              </h4>
+              <div className="flex items-center bg-purple-50 p-3 rounded-lg">
+                <FileCheck className="w-5 h-5 text-purple-600 mr-2" />
+                <span className="text-gray-700">{files[0].name}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Extracted Text Display */}
+          {extractedText && (
+            <div className="mt-6 p-4 bg-gray-100 rounded-lg">
+              <h4 className="text-lg font-semibold text-gray-800">
+                Extracted Text
+              </h4>
+              <p className="text-gray-700">{extractedText}</p>
+              <h4 className="text-lg font-semibold text-gray-800 mt-4">
+                Matched Keyword
+              </h4>
+              <p className="text-gray-700">{matchedKeyword}</p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Re-Upload Section */}
       {activeTab === "reupload" && (
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
             <FileCheck className="w-12 h-12 mx-auto text-purple-600 mb-4" />
             <p className="text-gray-600 mb-2">
-              Re-upload your medical documents here
+              Re-upload your medical documents
             </p>
             <p className="text-gray-500 text-sm mb-4">
               Supported formats: PDF, DOCX only
@@ -197,32 +246,7 @@ export function HealthDashboard() {
         </div>
       )}
 
-      {/* Display Uploaded Files */}
-      {files.length > 0 &&
-        (activeTab === "upload" || activeTab === "reupload") && (
-          <div className="mt-4 p-4 border rounded-lg bg-gray-100">
-            <h3 className="text-lg font-semibold">Uploaded File:</h3>
-            <p className="text-gray-700">{files[0].name}</p>
-          </div>
-        )}
-
-      {/* Display Extracted Text */}
-      {extractedText && (
-        <div className="mt-4 p-4 border rounded-lg bg-gray-100">
-          <h3 className="text-lg font-semibold">Extracted Text:</h3>
-          <p className="text-gray-700">{extractedText}</p>
-        </div>
-      )}
-
-      {/* Display Matched Keyword */}
-      {matchedKeyword && (
-        <div className="mt-4 p-4 border rounded-lg bg-gray-100">
-          <h3 className="text-lg font-semibold">Matched Keyword:</h3>
-          <p className="text-gray-700">{matchedKeyword}</p>
-        </div>
-      )}
-
-      {/* Manual Entry Section */}
+      {/* Manual Entry Section (Visible Only When Active) */}
       {activeTab === "manual" && (
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="space-y-6">
@@ -234,23 +258,31 @@ export function HealthDashboard() {
                     .replace(/^./, (str) => str.toUpperCase())}
                 </label>
                 <input
-                  type={key === "testDate" ? "date" : "text"}
+                  type="number"
                   className="w-full px-4 py-2 border rounded-lg focus:ring-purple-500 focus:border-purple-500"
                   value={value}
-                  onChange={(e) =>
-                    setManualEntry((prev) => ({
-                      ...prev,
-                      [key]: e.target.value,
-                    }))
-                  }
+                  onChange={(e) => handleChange(key, e.target.value)}
                 />
               </div>
             ))}
           </div>
+
+          <button
+            onClick={handleSubmit}
+            className="mt-6 w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+            disabled={loading}
+          >
+            {loading ? "Submitting..." : "Submit"}
+          </button>
+
+          {responseMessage && (
+            <div className="mt-4 text-center text-sm text-gray-700">
+              {responseMessage}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Lifestyle Section */}
       {activeTab === "lifestyle" && (
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="space-y-6">
