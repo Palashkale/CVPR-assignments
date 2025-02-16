@@ -3,13 +3,12 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Shield } from "lucide-react";
 import axios from "axios";
 
-// Adjust interface to handle both user and admin data
 interface User {
   name: string;
 }
 
 interface Admin {
-  adminName: string; // Updated field to match API response
+  adminName: string;
 }
 
 export default function Navbar() {
@@ -20,7 +19,7 @@ export default function Navbar() {
     JSON.parse(localStorage.getItem("admin") || "null"),
   );
   const navigate = useNavigate();
-  const location = useLocation(); // Track location changes
+  const location = useLocation();
 
   // Fetch user data
   useEffect(() => {

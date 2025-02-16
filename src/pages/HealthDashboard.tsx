@@ -1,10 +1,18 @@
 import React, { useState } from "react";
-import axios from "axios";
-import { FileCheck, Upload, ClipboardList, Dumbbell } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
+
+import axios, { AxiosError } from "axios";
+import {
+  FileCheck,
+  Upload,
+  ClipboardList,
+  Dumbbell,
+  ShieldAlert,
+  AlertTriangle,
+} from "lucide-react";
 
 export function HealthDashboard() {
   const [files, setFiles] = useState<File[]>([]);
-  const [showLifestyle] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [extractedText, setExtractedText] = useState<string>("");
@@ -20,7 +28,7 @@ export function HealthDashboard() {
     { value: 4, label: "Very Frequently" },
     { value: 5, label: "Always" },
   ];
-
+  //Lifestyle
   const [lifestyle, setLifestyle] = useState({
     exercise: 0,
     smoking: 0,
@@ -30,6 +38,26 @@ export function HealthDashboard() {
     mentalStress: 0,
   });
 
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [response, setResponse] = useState<{ weightedAverage: number } | null>(
+    null,
+  );
+
+  const sendDataToAPI = async () => {
+    try {
+      const { bmi, ...numericValues } = lifestyle; // Exclude 'bmi' from API request
+      const res = await axios.post<{ weightedAverage: number }>(
+        "http://localhost:5001/lifestyle",
+        numericValues,
+      );
+
+      setResponse(res.data);
+      setApiError(null);
+    } catch (error) {
+      const err = error as AxiosError<{ message: string }>;
+      setApiError(err.response?.data.message || "Server Error");
+    }
+  };
   const [manualEntry, setManualEntry] = useState({
     bloodGlucose: "",
     HBA1C: "",
@@ -41,7 +69,7 @@ export function HealthDashboard() {
     Haemoglobin: "",
     MuscularCorpusValue: "",
   });
-
+  //Upload Docs
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setError(null); // Reset error state
@@ -68,44 +96,51 @@ export function HealthDashboard() {
   };
 
   const handleReupload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setError(null);
-      const file = e.target.files[0];
+    if (!e.target.files || e.target.files.length === 0) return;
 
-      if (
-        ![
-          "application/pdf",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ].includes(file.type)
-      ) {
-        setError(() => "Please upload only PDF or DOCX files");
-        return;
-      }
+    setError(null);
+    const file = e.target.files[0];
+    //Lab Reports
+    // Allowed file types
+    const allowedTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "image/jpeg",
+      "image/png",
+    ];
 
-      setFiles([file]);
-      const formData = new FormData();
-      formData.append("file", file as Blob);
+    if (!allowedTypes.includes(file.type)) {
+      setError("Please upload only PDF, DOCX, JPG, or PNG files");
+      return;
+    }
 
-      try {
-        const response = await axios.post(
-          "http://localhost:8001/reupload/",
-          formData,
-          {
-            headers: {
-              "Content-Type": "multipart/form-data",
-              "X-Upload-Type": "reupload",
-            },
+    setFiles([file]);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await axios.post(
+        "http://localhost:8002/extract/",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            "X-Upload-Type": "reupload",
           },
-        );
+        },
+      );
 
-        setExtractedText(response.data.extracted_text || "");
-        setMatchedKeyword(response.data.matched_keyword || "");
-      } catch (err) {
-        if (axios.isAxiosError(err) && err.response?.data?.detail) {
-          setError(err.response.data.detail);
-        } else {
-          setError("Failed to process re-uploaded file");
-        }
+      if (response.data) {
+        setExtractedText(JSON.stringify(response.data, null, 2)); // Display extracted values as JSON
+      } else {
+        setError("No response received from the server.");
+      }
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data?.detail) {
+        setError(err.response.data.detail);
+      } else {
+        setError("Failed to process the re-uploaded file");
       }
     }
   };
@@ -116,7 +151,7 @@ export function HealthDashboard() {
       [key]: value === "" ? "" : parseFloat(value) || "",
     }));
   };
-
+  //Manual Entry
   const handleSubmit = async () => {
     setLoading(true);
     setResponseMessage("");
@@ -138,6 +173,7 @@ export function HealthDashboard() {
       setLoading(false);
     }
   };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="text-center mb-12">
@@ -222,7 +258,6 @@ export function HealthDashboard() {
           )}
         </div>
       )}
-
       {activeTab === "reupload" && (
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
@@ -231,18 +266,79 @@ export function HealthDashboard() {
               Re-upload your medical documents
             </p>
             <p className="text-gray-500 text-sm mb-4">
-              Supported formats: PDF, DOCX only
+              Supported formats: PDF, DOCX, JPG, PNG
             </p>
             <label className="bg-purple-600 text-white px-6 py-2 rounded-lg cursor-pointer hover:bg-purple-700 transition-colors">
               Browse Files
               <input
                 type="file"
                 className="hidden"
-                accept=".pdf,.docx"
+                accept=".pdf,.docx,.jpg,.png"
                 onChange={handleReupload}
               />
             </label>
           </div>
+
+          {/* Display Extracted Data */}
+          {extractedText && (
+            <div className="mt-6 p-6 bg-gray-100 rounded-lg shadow-md">
+              <h3 className="text-lg font-semibold mb-4">
+                Extracted Medical Values
+              </h3>
+
+              <table className="w-full border-collapse border border-gray-300">
+                <thead>
+                  <tr className="bg-gray-200">
+                    <th className="border border-gray-300 px-4 py-2">
+                      Test Name
+                    </th>
+                    <th className="border border-gray-300 px-4 py-2">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(
+                    JSON.parse(extractedText)?.extracted_values || {},
+                  ).map(([key, value]) => (
+                    <tr key={key} className="text-center">
+                      <td className="border border-gray-300 px-4 py-2">
+                        {key}
+                      </td>
+                      <td className="border border-gray-300 px-4 py-2">
+                        {value}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Display Predicted Disease in an Alert Manner */}
+              {JSON.parse(extractedText)?.model_prediction
+                ?.disease_prediction && (
+                <div className="mt-6 p-4 bg-red-100 border-l-4 border-red-600 text-red-700 rounded-lg shadow-md flex items-center animate-pulse">
+                  <AlertTriangle className="w-6 h-6 text-red-600 mr-3" />
+                  <div>
+                    <h3 className="text-lg font-semibold">
+                      ⚠️ Possible Disease Detected
+                    </h3>
+                    <p className="text-xl font-bold">
+                      {
+                        JSON.parse(extractedText)?.model_prediction
+                          ?.disease_prediction
+                      }
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Display Error if any */}
+          {error && (
+            <div className="mt-4 p-4 bg-red-100 border-l-4 border-red-600 text-red-700 rounded-lg shadow-md flex items-center animate-pulse">
+              <AlertTriangle className="w-6 h-6 text-red-600 mr-3" />
+              <p className="font-semibold">{error}</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -269,20 +365,25 @@ export function HealthDashboard() {
 
           <button
             onClick={handleSubmit}
-            className="mt-6 w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+            className="mt-6 w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-all duration-200"
             disabled={loading}
           >
             {loading ? "Submitting..." : "Submit"}
           </button>
 
           {responseMessage && (
-            <div className="mt-4 text-center text-sm text-gray-700">
-              {responseMessage}
-            </div>
+            <Alert className="mt-6 bg-gray-50 border-l-4 border-red-500 shadow-md">
+              <ShieldAlert className="h-5 w-5 text-red-500" />
+              <AlertTitle className="text-red-600">
+                Predicted Disease
+              </AlertTitle>
+              <AlertDescription className="text-gray-800">
+                {responseMessage}
+              </AlertDescription>
+            </Alert>
           )}
         </div>
       )}
-
       {activeTab === "lifestyle" && (
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="space-y-6">
@@ -326,14 +427,31 @@ export function HealthDashboard() {
               </div>
             ))}
           </div>
-        </div>
-      )}
 
-      {/* Error Message */}
-      {error && (
-        <div className="mt-4 bg-red-100 p-6 rounded-lg shadow-xl">
-          <h3 className="text-xl font-semibold text-gray-900">Error</h3>
-          <p className="text-red-700">{error}</p>
+          <button
+            onClick={sendDataToAPI}
+            className="mt-6 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700"
+          >
+            Submit
+          </button>
+
+          {/* Response Message */}
+          {response && (
+            <div className="mt-4 bg-green-100 p-6 rounded-lg shadow-xl">
+              <h3 className="text-xl font-semibold text-gray-900">Result</h3>
+              <p className="text-green-700">
+                Weighted Average: {response.weightedAverage}
+              </p>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {apiError && (
+            <div className="mt-4 bg-red-100 p-6 rounded-lg shadow-xl">
+              <h3 className="text-xl font-semibold text-gray-900">Error</h3>
+              <p className="text-red-700">{apiError}</p>
+            </div>
+          )}
         </div>
       )}
     </div>
